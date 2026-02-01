@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: '3.24.x'
+  FLUTTER_VERSION: '3.38.x'
 
 jobs:
   # ---------- Android APK ----------
@@ -26,7 +26,6 @@ jobs:
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          # build-number: use 1 or strip from tag (e.g. 1.0.0+2 -> 2)
           BUILD_NUM="${VERSION##*+}"
           [[ "$BUILD_NUM" == "$VERSION" ]] && BUILD_NUM=1
           echo "build_number=$BUILD_NUM" >> $GITHUB_OUTPUT
