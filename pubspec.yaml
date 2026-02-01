@@ -1,7 +1,7 @@
 name: autogit
 description: "A Flutter app for managing local and remote Git repositories, with GitHub authentication."
 publish_to: 'none' 
-version: 1.0.0+1
+version: 0.1.0
 
 environment:
   sdk: ^3.5.0
@@ -34,6 +34,10 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
   flutter_launcher_icons: "^0.14.4"
+
+# Resolve path conflict: flutter_test (sdk) uses path 1.9.0, flutter_native_splash wants ^1.9.1.
+dependency_overrides:
+  path: ^1.9.1
 
 # ============ FLUTTER PACKAGE =================
 
