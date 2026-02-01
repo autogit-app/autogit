@@ -18,6 +18,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _isLoading = false;
   String? _error;
 
+  /// When using device flow: code to show so user can enter it in the browser.
+  String? _deviceUserCode;
+  String? _deviceVerificationUri;
+
   Future<void> _launchGitHubSignUp() async {
     const url = 'https://github.com/signup';
     if (await canLaunchUrlString(url)) {
@@ -30,18 +34,34 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     setState(() {
       _isLoading = true;
       _error = null;
+      _deviceUserCode = null;
+      _deviceVerificationUri = null;
     });
-    final error = await GitHubAuthService.instance.login();
+    final error = await GitHubAuthService.instance.login(
+      onDeviceCodeReady: (userCode, verificationUri) {
+        if (!mounted) return;
+        setState(() {
+          _deviceUserCode = userCode;
+          _deviceVerificationUri = verificationUri;
+        });
+      },
+    );
     if (!mounted) return;
     if (error != null) {
       setState(() {
         _isLoading = false;
         _error = error;
+        _deviceUserCode = null;
+        _deviceVerificationUri = null;
       });
       return;
     }
     ref.invalidate(authStateProvider);
-    setState(() => _isLoading = false);
+    setState(() {
+      _isLoading = false;
+      _deviceUserCode = null;
+      _deviceVerificationUri = null;
+    });
     context.go('/onboarding');
   }
 
@@ -91,6 +111,45 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     style: textTheme.bodySmall?.copyWith(
                       color: colorScheme.onErrorContainer,
                     ),
+                  ),
+                ),
+              ],
+              if (_deviceUserCode != null &&
+                  _deviceVerificationUri != null) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Enter this code in your browser',
+                        style: textTheme.titleSmall?.copyWith(
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SelectableText(
+                        _deviceUserCode!,
+                        style: textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 4,
+                          fontFamily: 'monospace',
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Browser opened: $_deviceVerificationUri',
+                        style: textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

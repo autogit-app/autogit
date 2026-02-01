@@ -1,9 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import 'package:autogit/core/widgets/large_app_bar.dart';
 import 'package:autogit/features/auth/providers/auth_provider.dart';
+
+Future<void> _showClearCacheConfirmation(BuildContext context) async {
+  final confirm = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Clear cache'),
+      content: const Text(
+        'This will clear image and other cached data. Your sign-in and settings will not be affected. Continue?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Clear cache'),
+        ),
+      ],
+    ),
+  );
+  if (confirm != true || !context.mounted) return;
+  PaintingBinding.instance.imageCache.clear();
+  PaintingBinding.instance.imageCache.clearLiveImages();
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Cache cleared'),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
+}
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -23,8 +57,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'Account',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
               ),
             ),
           ),
@@ -56,8 +90,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'Features',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
               ),
             ),
           ),
@@ -85,8 +119,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'Data',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
               ),
             ),
           ),
@@ -104,7 +138,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('Cache & storage'),
                 subtitle: const Text('Clear cached data'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
+                onTap: () => _showClearCacheConfirmation(context),
               ),
             ]),
           ),
@@ -114,8 +148,8 @@ class SettingsScreen extends ConsumerWidget {
               child: Text(
                 'About',
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
               ),
             ),
           ),
@@ -129,11 +163,15 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/settings/about'),
               ),
               ListTile(
-                leading: const Icon(FontAwesomeIcons.fileContract),
-                title: const Text('Privacy & terms'),
-                subtitle: const Text('Privacy policy'),
+                leading: const Icon(FontAwesomeIcons.circleQuestion),
+                title: const Text('Help'),
+                subtitle:
+                    const Text('Documentation at autogit-app.github.io/docs'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {},
+                onTap: () => launchUrlString(
+                  'https://autogit-app.github.io/docs',
+                  mode: LaunchMode.externalApplication,
+                ),
               ),
             ]),
           ),

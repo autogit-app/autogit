@@ -8,6 +8,11 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import 'auth_state.dart';
 
+/// Callback when device flow is used: (userCode, verificationUri).
+/// The app should display [userCode] so the user can enter it in the browser.
+typedef DeviceCodeCallback = void Function(
+    String userCode, String verificationUri);
+
 /// GitHub OAuth client ID and secret.
 /// Create a GitHub OAuth App at https://github.com/settings/developers
 /// and set redirect URL to: http://localhost:8080/callback
@@ -55,8 +60,9 @@ class GitHubAuthService {
 
   /// Start GitHub OAuth flow. Uses device flow (no client secret) when secret
   /// is not set (e.g. open-source builds); otherwise uses web flow.
+  /// When using device flow, [onDeviceCodeReady] is called with the code to show in the app.
   /// Returns null on success; returns error message on failure.
-  Future<String?> login() async {
+  Future<String?> login({DeviceCodeCallback? onDeviceCodeReady}) async {
     if (_clientId.isEmpty) {
       return 'GitHub OAuth is not configured. Set GITHUB_CLIENT_ID (e.g. via '
           '--dart-define). Create an OAuth App at '
@@ -67,7 +73,7 @@ class GitHubAuthService {
     if (_clientSecret.isNotEmpty) {
       return _loginWebFlow();
     }
-    return _loginDeviceFlow();
+    return _loginDeviceFlow(onDeviceCodeReady: onDeviceCodeReady);
   }
 
   /// Web application flow: browser + local callback server. Requires client secret.
@@ -131,20 +137,23 @@ class GitHubAuthService {
 
   /// Device flow: no client secret. User enters code at github.com/login/device.
   /// Use for open-source / published builds where secret cannot be embedded.
-  Future<String?> _loginDeviceFlow() async {
+  Future<String?> _loginDeviceFlow(
+      {DeviceCodeCallback? onDeviceCodeReady}) async {
     final device = await _requestDeviceCode();
     if (device == null) {
       return 'Failed to start device flow. Ensure "Device flow" is enabled for '
           'your OAuth app at https://github.com/settings/developers.';
     }
 
-    final verificationUri =
-        device['verification_uri'] as String? ??
+    final verificationUri = device['verification_uri'] as String? ??
         'https://github.com/login/device';
     final userCode = device['user_code'] as String? ?? '';
     final interval = (device['interval'] as num?)?.toInt() ?? 5;
     final expiresIn = (device['expires_in'] as num?)?.toInt() ?? 900;
     final deviceCode = device['device_code'] as String? ?? '';
+
+    // Show the code in the app so the user can enter it in the browser.
+    onDeviceCodeReady?.call(userCode, verificationUri);
 
     if (!await launchUrlString('$verificationUri?user_code=$userCode')) {
       return 'Open $verificationUri and enter code: $userCode';
