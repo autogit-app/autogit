@@ -47,23 +47,20 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build APK (split per ABI)
         run: |
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --build-name=${{ steps.version.outputs.build_name }} \
             --build-number=${{ steps.version.outputs.build_number }} \
             --dart-define=GITHUB_CLIENT_ID=${{ vars.GITHUB_CLIENT_ID || '' }}
         env:
           GITHUB_CLIENT_ID: ${{ vars.GITHUB_CLIENT_ID }}
 
-      - name: Find and upload APK
-        run: |
-          APK=$(find build -name "*.apk" | head -1)
-          cp "$APK" autogit.apk
-      - uses: actions/upload-artifact@v4
+      - name: Upload Android APKs
+        uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: autogit.apk
+          path: build/app/outputs/flutter-apk/*.apk
 
   # ---------- Windows .exe ----------
   windows:
@@ -134,6 +131,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
           cache: true
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev
 
       - name: Get dependencies
         run: flutter pub get
@@ -265,9 +268,14 @@ jobs:
         run: |
           mkdir -p release
           VERSION="${{ steps.version.outputs.version }}"
-          # APK (artifact name = android-apk, we uploaded autogit.apk)
-          cp artifacts/android-apk/autogit.apk release/autogit-$VERSION.apk 2>/dev/null || \
-            cp artifacts/android-apk/*.apk release/autogit-$VERSION.apk 2>/dev/null || true
+          # Android split APKs: copy with descriptive names
+          for f in artifacts/android-apk/*.apk; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" .apk)
+            # app-armeabi-v7a-release.apk -> autogit-0.1.0-armeabi-v7a.apk
+            name=$(echo "$base" | sed 's/^app-//;s/-release$//')
+            cp "$f" "release/autogit-$VERSION-$name.apk"
+          done
           # Windows zip
           cp artifacts/windows-exe/*.zip release/ 2>/dev/null || true
           # Linux tarball from bundle
@@ -283,7 +291,7 @@ jobs:
           name: Release ${{ steps.version.outputs.tag }}
           body: |
             ## AutoGit ${{ steps.version.outputs.version }}
-            - **Android**: `autogit-*.apk` — install on device
+            - **Android** (split per ABI): `autogit-*-arm64-v8a.apk` (most devices), `autogit-*-armeabi-v7a.apk`, `autogit-*-x86_64.apk` — install on device
             - **Windows**: `autogit-windows-*.zip` — extract and run autogit.exe
             - **Linux**: `autogit-linux-*.tar.gz` — extract and run autogit
             - **Arch Linux**: `*.pkg.tar.zst` — install with `pacman -U`
