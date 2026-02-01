@@ -29,7 +29,7 @@ class HomeCard extends StatelessWidget {
                   children: [
                     CardTitle(title: title),
                     const Spacer(),
-                    ?trailing,
+                    if (trailing != null) trailing!,
                   ],
                 ),
               ),
