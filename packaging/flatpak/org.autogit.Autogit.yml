@@ -1,0 +1,23 @@
+# Flatpak manifest for AutoGit. Built from pre-built Linux bundle in CI.
+# In the workflow, the linux-bundle artifact is placed as ./bundle/ next to this file.
+app-id: org.autogit.Autogit
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: autogit
+
+finish-args:
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --filesystem=home
+  - --filesystem=xdg-documents
+
+modules:
+  - name: autogit
+    buildsystem: simple
+    build-commands:
+      - cp -r . /app/
+    sources:
+      - type: dir
+        path: bundle

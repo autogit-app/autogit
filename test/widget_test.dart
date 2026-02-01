@@ -1,0 +1,16 @@
+import 'package:autogit/app.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  testWidgets('App smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: AGApp()));
+    expect(find.byType(AGApp), findsOneWidget);
+  });
+  testWidgets('App shows MaterialApp', (WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: AGApp()));
+    await tester.pump();
+    expect(find.byType(MaterialApp), findsOneWidget);
+  });
+}
