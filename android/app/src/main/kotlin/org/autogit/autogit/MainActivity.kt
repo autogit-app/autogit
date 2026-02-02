@@ -1,4 +1,4 @@
-package com.example.testing
+package org.autogit.autogit
 
 import io.flutter.embedding.android.FlutterActivity
 

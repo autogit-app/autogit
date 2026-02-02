@@ -3,10 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:autogit/core/widgets/large_app_bar.dart';
 import 'package:autogit/features/settings/logic/ai_settings_providers.dart';
-
-/// Example URL – paste any .task or .bin model URL from HuggingFace (e.g. Gemma 3 270M, Qwen).
-const String kFlutterGemmaModelUrlHint =
-    'https://huggingface.co/.../resolve/main/model.task';
+import 'package:autogit/features/settings/logic/flutter_gemma_presets.dart';
 
 class AiScreen extends ConsumerStatefulWidget {
   const AiScreen({super.key});
@@ -27,6 +24,7 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   bool _syncedFromProviders = false;
   bool _downloadingModel = false;
   int _downloadProgress = 0;
+  FlutterGemmaPreset? _selectedPreset;
 
   @override
   void initState() {
@@ -52,7 +50,15 @@ class _AiScreenState extends ConsumerState<AiScreen> {
     _openAiModelController.text = ref.read(aiOpenAiModelProvider);
     _claudeModelController.text = ref.read(aiClaudeModelProvider);
     _geminiModelController.text = ref.read(aiGeminiModelProvider);
-    _flutterGemmaUrlController.text = ref.read(aiFlutterGemmaModelUrlProvider);
+    final savedUrl = ref.read(aiFlutterGemmaModelUrlProvider);
+    _flutterGemmaUrlController.text = savedUrl;
+    try {
+      _selectedPreset = kFlutterGemmaPresets.firstWhere(
+        (p) => p.url == savedUrl,
+      );
+    } catch (_) {
+      _selectedPreset = null;
+    }
     _syncedFromProviders = true;
   }
 
@@ -69,23 +75,28 @@ class _AiScreenState extends ConsumerState<AiScreen> {
   }
 
   Future<void> _downloadFlutterGemmaModel() async {
-    final url = _flutterGemmaUrlController.text.trim();
+    final preset = _selectedPreset;
+    final customUrl = _flutterGemmaUrlController.text.trim();
+    final url = preset?.url ?? customUrl;
     if (url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Enter a model URL first (e.g. from HuggingFace).'),
+          content: Text(
+            'Choose a model from the list above or paste a custom URL.',
+          ),
         ),
       );
       return;
     }
     if (_downloadingModel) return;
+    final modelType = preset?.modelType ?? ModelType.general;
     setState(() {
       _downloadingModel = true;
       _downloadProgress = 0;
     });
     try {
       await FlutterGemma.installModel(
-        modelType: ModelType.general,
+        modelType: modelType,
       ).fromNetwork(url).withProgress((progress) {
         if (mounted) setState(() => _downloadProgress = progress);
       }).install();
@@ -109,17 +120,17 @@ class _AiScreenState extends ConsumerState<AiScreen> {
 
   Future<void> _save() async {
     final backend = ref.read(aiBackendProvider);
-    ref.read(aiOllamaUrlProvider.notifier).state = _ollamaUrlController.text
-        .trim();
-    ref.read(aiOllamaModelProvider.notifier).state = _ollamaModelController.text
-        .trim();
+    ref.read(aiOllamaUrlProvider.notifier).state =
+        _ollamaUrlController.text.trim();
+    ref.read(aiOllamaModelProvider.notifier).state =
+        _ollamaModelController.text.trim();
     ref.read(aiApiKeyProvider.notifier).state = _apiKeyController.text.trim();
-    ref.read(aiOpenAiModelProvider.notifier).state = _openAiModelController.text
-        .trim();
-    ref.read(aiClaudeModelProvider.notifier).state = _claudeModelController.text
-        .trim();
-    ref.read(aiGeminiModelProvider.notifier).state = _geminiModelController.text
-        .trim();
+    ref.read(aiOpenAiModelProvider.notifier).state =
+        _openAiModelController.text.trim();
+    ref.read(aiClaudeModelProvider.notifier).state =
+        _claudeModelController.text.trim();
+    ref.read(aiGeminiModelProvider.notifier).state =
+        _geminiModelController.text.trim();
     ref.read(aiFlutterGemmaModelUrlProvider.notifier).state =
         _flutterGemmaUrlController.text.trim();
     await saveAiSettings(
@@ -185,26 +196,58 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                   const SizedBox(height: 24),
                   if (backend == AiBackend.flutterGemma) ...[
                     Text(
-                      'On-device model (phones & tablets)',
+                      'On-device model (no HuggingFace login)',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Paste a model URL from HuggingFace (e.g. Gemma 3 270M, Qwen; .task or .bin). Then tap Download.',
+                      'Choose a supported model below, then tap Download. No token required.',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 12),
+                    DropdownButtonFormField<FlutterGemmaPreset?>(
+                      value: _selectedPreset,
+                      decoration: const InputDecoration(
+                        labelText: 'Model',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem<FlutterGemmaPreset?>(
+                          value: null,
+                          child: Text('Select a model…'),
+                        ),
+                        ...kFlutterGemmaPresets.map(
+                          (p) => DropdownMenuItem<FlutterGemmaPreset?>(
+                            value: p,
+                            child: Text(p.label),
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        setState(() {
+                          _selectedPreset = v;
+                          if (v != null) {
+                            _flutterGemmaUrlController.text = v.url;
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     TextFormField(
                       controller: _flutterGemmaUrlController,
-                      decoration: InputDecoration(
-                        labelText: 'Model URL',
-                        hintText: kFlutterGemmaModelUrlHint,
-                        border: const OutlineInputBorder(),
+                      decoration: const InputDecoration(
+                        labelText: 'Or paste custom URL',
+                        hintText:
+                            'https://huggingface.co/.../resolve/main/model.task',
+                        border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.url,
                       maxLines: 2,
+                      onChanged: (_) {
+                        setState(() => _selectedPreset = null);
+                      },
                     ),
                     const SizedBox(height: 12),
                     if (_downloadingModel)
@@ -265,8 +308,8 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                       backend == AiBackend.openai
                           ? 'Get your API key from platform.openai.com'
                           : backend == AiBackend.claude
-                          ? 'Get your API key from console.anthropic.com'
-                          : 'Get your API key from aistudio.google.com',
+                              ? 'Get your API key from console.anthropic.com'
+                              : 'Get your API key from aistudio.google.com',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -285,15 +328,15 @@ class _AiScreenState extends ConsumerState<AiScreen> {
                       controller: backend == AiBackend.openai
                           ? _openAiModelController
                           : backend == AiBackend.claude
-                          ? _claudeModelController
-                          : _geminiModelController,
+                              ? _claudeModelController
+                              : _geminiModelController,
                       decoration: InputDecoration(
                         labelText: 'Model name',
                         hintText: backend == AiBackend.openai
                             ? 'gpt-4o-mini, gpt-4o, etc.'
                             : backend == AiBackend.claude
-                            ? 'claude-3-5-haiku-20241022, etc.'
-                            : 'gemini-2.5-flash, gemini-2.0-flash, etc.',
+                                ? 'claude-3-5-haiku-20241022, etc.'
+                                : 'gemini-2.5-flash, gemini-2.0-flash, etc.',
                         border: const OutlineInputBorder(),
                       ),
                     ),
