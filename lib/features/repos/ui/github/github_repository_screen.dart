@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_octicons/flutter_octicons.dart';
 import 'package:go_router/go_router.dart';
@@ -73,7 +74,8 @@ class _GithubRepositoryScreenState
               const PopupMenuItem(
                 value: 'branches',
                 child: ListTile(
-                  title: Text('Branches'),
+                  leading: Icon(Icons.account_tree),
+                  title: Text('Status & branches'),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                 ),
@@ -254,6 +256,7 @@ class _GithubRepositoryScreenState
         .map((b) => b['name'] as String? ?? '')
         .where((s) => s.isNotEmpty)
         .toList();
+    if (!context.mounted) return;
     final titleController = TextEditingController();
     final bodyController = TextEditingController();
     var headBranch = branchNames.isNotEmpty ? branchNames.first : '';
@@ -283,7 +286,7 @@ class _GithubRepositoryScreenState
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: headBranch.isEmpty ? null : headBranch,
+                    initialValue: headBranch.isEmpty ? null : headBranch,
                     decoration: const InputDecoration(labelText: 'Head branch'),
                     items: branchNames
                         .map((b) => DropdownMenuItem(value: b, child: Text(b)))
@@ -292,7 +295,7 @@ class _GithubRepositoryScreenState
                         setDialogState(() => headBranch = v ?? ''),
                   ),
                   DropdownButtonFormField<String>(
-                    value: base,
+                    initialValue: base,
                     decoration: const InputDecoration(labelText: 'Base branch'),
                     items: branchNames
                         .map((b) => DropdownMenuItem(value: b, child: Text(b)))
@@ -349,76 +352,235 @@ class _GithubRepositoryScreenState
       context: context,
       isScrollControlled: true,
       builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
+        initialChildSize: 0.75,
         minChildSize: 0.3,
-        maxChildSize: 0.9,
+        maxChildSize: 0.95,
         expand: false,
-        builder: (_, scrollController) =>
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: listBranches(
-                owner: widget.owner,
-                repo: widget.repo,
-                token: token,
-              ),
-              builder: (ctx, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final branches = snapshot.data ?? [];
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Branches', style: theme.textTheme.titleLarge),
-                          if (token != null && token.isNotEmpty)
-                            FilledButton.icon(
-                              icon: const Icon(Icons.add),
-                              label: const Text('Create branch'),
-                              onPressed: () {
-                                Navigator.pop(ctx);
-                                _showCreateBranchDialog(
-                                  context,
-                                  token,
-                                  branches,
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: branches.length,
-                        itemBuilder: (ctx, i) {
-                          final b = branches[i];
-                          final name = b['name'] as String? ?? '';
-                          final sha =
-                              (b['commit'] as Map<String, dynamic>?)?['sha']
-                                  as String? ??
-                              '';
-                          return ListTile(
-                            leading: const Icon(OctIcons.git_branch_16),
-                            title: Text(name),
-                            subtitle: Text(
-                              sha.length > 8 ? sha.substring(0, 8) : sha,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+        builder: (_, scrollController) => _StatusAndBranchesSheet(
+          owner: widget.owner,
+          repo: widget.repo,
+          token: token,
+          scrollController: scrollController,
+          theme: theme,
+          onCreateBranch: () async {
+            Navigator.pop(ctx);
+            final branches = await listBranches(
+              owner: widget.owner,
+              repo: widget.repo,
+              token: token,
+            );
+            if (context.mounted) {
+              _showCreateBranchDialog(context, token!, branches);
+            }
+          },
+          onMerge: () async {
+            Navigator.pop(ctx);
+            if (context.mounted) _showMergeBranchDialog(context, token);
+          },
+          onDeleteBranch: (branchName, defaultBranch) {
+            _deleteBranchWithConfirm(context, token, branchName, defaultBranch);
+          },
+          onSetDefaultBranch: (branchName) {
+            _setDefaultBranch(context, token, branchName);
+          },
+        ),
       ),
     );
+  }
+
+  Future<void> _showMergeBranchDialog(
+      BuildContext context, String? token) async {
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in with GitHub to merge branches')),
+      );
+      return;
+    }
+    final branches = await listBranches(
+      owner: widget.owner,
+      repo: widget.repo,
+      token: token,
+    );
+    final branchNames = branches
+        .map((b) => b['name'] as String? ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (branchNames.length < 2) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Need at least two branches to merge')),
+        );
+      }
+      return;
+    }
+    String? defaultBranch;
+    try {
+      final info = await getDefaultBranchAndSha(
+        owner: widget.owner,
+        repo: widget.repo,
+        token: token,
+      );
+      defaultBranch = info['branch'];
+    } catch (_) {}
+    var base = defaultBranch ?? branchNames.first;
+    var head = branchNames.firstWhere(
+      (b) => b != base,
+      orElse: () => branchNames.length > 1 ? branchNames[1] : branchNames.first,
+    );
+    if (!context.mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Merge branch'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Merge "head" into "base". Base branch will contain the merged result.',
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: base,
+                  decoration: const InputDecoration(labelText: 'Base (target)'),
+                  items: branchNames
+                      .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                      .toList(),
+                  onChanged: (v) => setState(() => base = v ?? base),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: head,
+                  decoration: const InputDecoration(labelText: 'Head (source)'),
+                  items: branchNames
+                      .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                      .toList(),
+                  onChanged: (v) => setState(() => head = v ?? head),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Merge'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    try {
+      await mergeBranch(
+        owner: widget.owner,
+        repo: widget.repo,
+        base: base,
+        head: head,
+        token: token,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Branches merged')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Merge failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteBranchWithConfirm(
+    BuildContext context,
+    String? token,
+    String branchName,
+    String defaultBranch,
+  ) async {
+    if (branchName == defaultBranch) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Cannot delete the default branch. Set another as default first.'),
+        ),
+      );
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete branch'),
+        content: Text(
+          'Delete branch "$branchName" on GitHub? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await deleteBranch(
+        owner: widget.owner,
+        repo: widget.repo,
+        branchName: branchName,
+        token: token,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted branch $branchName')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Delete failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _setDefaultBranch(
+    BuildContext context,
+    String? token,
+    String branchName,
+  ) async {
+    if (token == null || token.isEmpty) return;
+    try {
+      await updateRepo(
+        owner: widget.owner,
+        repo: widget.repo,
+        defaultBranch: branchName,
+        token: token,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Default branch set to $branchName')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _showCreateBranchDialog(
@@ -438,10 +600,10 @@ class _GithubRepositoryScreenState
       defaultSha = info['sha'];
     } catch (_) {}
     final nameController = TextEditingController();
-    var fromBranch =
-        defaultBranch ??
+    var fromBranch = defaultBranch ??
         (branches.isNotEmpty ? (branches.first['name'] as String?) : null) ??
         'main';
+    if (!context.mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -458,7 +620,7 @@ class _GithubRepositoryScreenState
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: fromBranch,
+                  initialValue: fromBranch,
                   decoration: const InputDecoration(labelText: 'From branch'),
                   items: branches
                       .map(
@@ -538,102 +700,368 @@ class _GithubRepositoryScreenState
         expand: false,
         builder: (_, scrollController) =>
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: listPullRequests(
-                owner: widget.owner,
-                repo: widget.repo,
-                token: token,
-              ),
-              builder: (ctx, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final prs = snapshot.data ?? [];
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Text(
-                        'Pull requests',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: prs.length,
-                        itemBuilder: (ctx, i) {
-                          final pr = prs[i];
-                          final number = pr['number'] as int? ?? 0;
-                          final title = pr['title'] as String? ?? '';
-                          final state = pr['state'] as String? ?? 'open';
-                          final mergeable = pr['mergeable'] as bool?;
-                          return ListTile(
-                            leading: Icon(
-                              OctIcons.git_pull_request_16,
-                              color: state == 'open'
-                                  ? Colors.green
-                                  : Colors.purple,
-                            ),
-                            title: Text(
-                              '#$number $title',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(state),
-                            trailing:
-                                state == 'open' &&
-                                    mergeable == true &&
-                                    token != null
-                                ? FilledButton(
-                                    onPressed: () async {
-                                      Navigator.pop(ctx);
-                                      try {
-                                        await mergePullRequest(
-                                          owner: widget.owner,
-                                          repo: widget.repo,
-                                          pullNumber: number,
-                                          token: token,
-                                        );
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('PR merged'),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Merge failed: $e'),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                    child: const Text('Merge'),
-                                  )
-                                : null,
-                            onTap: () {
-                              final url = pr['html_url'] as String?;
-                              if (url != null) launchUrlString(url);
-                            },
-                          );
+          future: listPullRequests(
+            owner: widget.owner,
+            repo: widget.repo,
+            token: token,
+          ),
+          builder: (ctx, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+            final prs = snapshot.data ?? [];
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Pull requests',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: prs.length,
+                    itemBuilder: (ctx, i) {
+                      final pr = prs[i];
+                      final number = pr['number'] as int? ?? 0;
+                      final title = pr['title'] as String? ?? '';
+                      final state = pr['state'] as String? ?? 'open';
+                      final mergeable = pr['mergeable'] as bool?;
+                      return ListTile(
+                        leading: Icon(
+                          OctIcons.git_pull_request_16,
+                          color: state == 'open' ? Colors.green : Colors.purple,
+                        ),
+                        title: Text(
+                          '#$number $title',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(state),
+                        trailing: state == 'open' &&
+                                mergeable == true &&
+                                token != null
+                            ? FilledButton(
+                                onPressed: () async {
+                                  Navigator.pop(ctx);
+                                  try {
+                                    await mergePullRequest(
+                                      owner: widget.owner,
+                                      repo: widget.repo,
+                                      pullNumber: number,
+                                      token: token,
+                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('PR merged'),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Merge failed: $e'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: const Text('Merge'),
+                              )
+                            : null,
+                        onTap: () {
+                          final url = pr['html_url'] as String?;
+                          if (url != null) launchUrlString(url);
                         },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
+    );
+  }
+}
+
+class _StatusAndBranchesSheet extends StatelessWidget {
+  const _StatusAndBranchesSheet({
+    required this.owner,
+    required this.repo,
+    required this.token,
+    required this.scrollController,
+    required this.theme,
+    required this.onCreateBranch,
+    required this.onMerge,
+    required this.onDeleteBranch,
+    required this.onSetDefaultBranch,
+  });
+
+  final String owner;
+  final String repo;
+  final String? token;
+  final ScrollController scrollController;
+  final ThemeData theme;
+  final VoidCallback onCreateBranch;
+  final VoidCallback onMerge;
+  final void Function(String branchName, String defaultBranch) onDeleteBranch;
+  final void Function(String branchName) onSetDefaultBranch;
+
+  Future<Map<String, dynamic>> _loadData() async {
+    final repoData = await getRepo(owner: owner, repo: repo, token: token);
+    final defaultBranch = repoData['default_branch'] as String? ?? 'main';
+    final branches = await listBranches(owner: owner, repo: repo, token: token);
+    List<Map<String, dynamic>> commits = [];
+    try {
+      commits = await listCommits(
+        owner: owner,
+        repo: repo,
+        sha: defaultBranch,
+        perPage: 25,
+        token: token,
+      );
+    } catch (_) {}
+    return {
+      'repo': repoData,
+      'defaultBranch': defaultBranch,
+      'branches': branches,
+      'commits': commits,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _loadData(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+        final data = snapshot.data!;
+        final repoData = data['repo'] as Map<String, dynamic>;
+        final defaultBranch = data['defaultBranch'] as String;
+        final branches = data['branches'] as List<Map<String, dynamic>>;
+        final commits = data['commits'] as List<Map<String, dynamic>>;
+        final cloneUrl = repoData['clone_url'] as String? ?? '';
+        final sshUrl = repoData['ssh_url'] as String? ?? '';
+
+        return ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Branch tree (recent commits)
+            Text(
+              'Branch tree',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: commits.isEmpty
+                    ? Text(
+                        'No commits',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    : SelectableText(
+                        commits.map((c) {
+                          final sha = c['sha'] as String? ?? '';
+                          final commit = c['commit'] as Map<String, dynamic>?;
+                          final message = commit?['message'] as String? ?? '';
+                          final firstLine = message.split('\n').first;
+                          return '${sha.length > 7 ? sha.substring(0, 7) : sha} $firstLine';
+                        }).join('\n'),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Branches
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Branches',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (token != null && token!.isNotEmpty)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        onPressed: onCreateBranch,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Create'),
+                      ),
+                      TextButton.icon(
+                        onPressed: onMerge,
+                        icon: const Icon(Icons.merge_type, size: 18),
+                        label: const Text('Merge'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Column(
+                children: [
+                  if (defaultBranch.isNotEmpty)
+                    ListTile(
+                      dense: true,
+                      leading: Icon(
+                        Icons.check_circle,
+                        size: 20,
+                        color: theme.colorScheme.primary,
+                      ),
+                      title: Text(defaultBranch,
+                          style: theme.textTheme.titleSmall),
+                      subtitle: const Text('Default branch'),
+                    ),
+                  ...branches.map((b) {
+                    final name = b['name'] as String? ?? '';
+                    final sha = (b['commit'] as Map<String, dynamic>?)?['sha']
+                            as String? ??
+                        '';
+                    final isDefault = name == defaultBranch;
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        isDefault ? Icons.check_circle : OctIcons.git_branch_16,
+                        size: 20,
+                        color: isDefault ? theme.colorScheme.primary : null,
+                      ),
+                      title: Text(name),
+                      subtitle:
+                          Text(sha.length > 8 ? sha.substring(0, 8) : sha),
+                      trailing: token != null && token!.isNotEmpty
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!isDefault) ...[
+                                  TextButton(
+                                    onPressed: () => onSetDefaultBranch(name),
+                                    child: const Text('Set default'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        onDeleteBranch(name, defaultBranch),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ],
+                            )
+                          : null,
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Remote (clone URLs)
+            Text(
+              'Remote',
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (cloneUrl.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              cloneUrl,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy),
+                            tooltip: 'Copy HTTPS URL',
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: cloneUrl));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('HTTPS URL copied'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    if (sshUrl.isNotEmpty) ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              sshUrl,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy),
+                            tooltip: 'Copy SSH URL',
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: sshUrl));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('SSH URL copied'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        );
+      },
     );
   }
 }

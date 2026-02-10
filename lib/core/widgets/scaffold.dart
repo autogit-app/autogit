@@ -6,11 +6,11 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:autogit/core/constants/icons/nav_icons.dart';
 import 'package:autogit/core/core.dart';
 
-class ScaffoldWithNavBar extends ConsumerWidget {
-  final StatefulNavigationShell navigationShell;
-  final Widget? floatingActionButton;
-  final PreferredSizeWidget? appBar;
+/// Breakpoint width: use NavigationRail when the scaffold is at least this wide
+/// (e.g. landscape or tablet). Otherwise use bottom NavigationBar.
+const double _kNavRailBreakpoint = 600;
 
+class ScaffoldWithNavBar extends ConsumerWidget {
   ScaffoldWithNavBar({
     super.key,
     required this.navigationShell,
@@ -18,58 +18,87 @@ class ScaffoldWithNavBar extends ConsumerWidget {
     this.appBar,
   });
 
+  final StatefulNavigationShell navigationShell;
+  final Widget? floatingActionButton;
+  final PreferredSizeWidget? appBar;
+
   void _onItemTapped(int index) {
     navigationShell.goBranch(index);
   }
 
-  final List<NavigationDestination> _destinations = [
-    const NavigationDestination(
+  static const List<NavigationDestination> _navBarDestinations = [
+    NavigationDestination(
       selectedIcon: Icon(AGNavIcons.homeSelected),
       icon: PhosphorIcon(AGNavIcons.home),
       label: 'Home',
     ),
-    const NavigationDestination(
+    NavigationDestination(
       selectedIcon: Icon(AGNavIcons.searchSelected),
       icon: Icon(AGNavIcons.search),
       label: 'Search',
     ),
-    const NavigationDestination(
+    NavigationDestination(
       selectedIcon: Icon(AGNavIcons.assistantSelected),
       icon: Icon(AGNavIcons.assistant),
       label: 'Assist',
     ),
-    const NavigationDestination(
+    NavigationDestination(
       selectedIcon: Icon(AGNavIcons.profileSelected),
       icon: Icon(AGNavIcons.profile),
       label: 'Profile',
     ),
-    const NavigationDestination(
+    NavigationDestination(
       selectedIcon: Icon(AGNavIcons.settingsSelected),
       icon: Icon(AGNavIcons.settings),
       label: 'Settings',
     ),
   ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brightness = ref.watch(brightnessProvider);
-    return Scaffold(
-      body: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness: brightness == Brightness.dark
-              ? Brightness.light
-              : Brightness.dark,
-          systemNavigationBarColor: Colors.transparent,
-        ),
-        child: navigationShell,
+    final width = MediaQuery.sizeOf(context).width;
+    final useNavRail = width >= _kNavRailBreakpoint;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness:
+            brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: _onItemTapped,
-        destinations: _destinations,
+      child: Scaffold(
+        body: useNavRail
+            ? Row(
+                children: [
+                  NavigationRail(
+                    selectedIndex: navigationShell.currentIndex,
+                    onDestinationSelected: _onItemTapped,
+                    labelType: NavigationRailLabelType.none,
+                    destinations: _navBarDestinations
+                        .map(
+                          (d) => NavigationRailDestination(
+                            icon: d.icon,
+                            selectedIcon: d.selectedIcon,
+                            label: Text(d.label),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  Expanded(child: navigationShell),
+                ],
+              )
+            : navigationShell,
+        bottomNavigationBar: useNavRail
+            ? null
+            : NavigationBar(
+                selectedIndex: navigationShell.currentIndex,
+                onDestinationSelected: _onItemTapped,
+                destinations: _navBarDestinations,
+              ),
+        floatingActionButton: floatingActionButton,
+        appBar: appBar,
       ),
-      floatingActionButton: floatingActionButton,
-      appBar: appBar,
     );
   }
 }

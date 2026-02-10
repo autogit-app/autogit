@@ -10,16 +10,17 @@ import 'package:highlight/languages/markdown.dart';
 import 'package:highlight/languages/plaintext.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter_highlight/themes/github.dart';
+import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'package:autogit/core/widgets/code_editor_field.dart';
 import 'package:autogit/features/auth/providers/auth_provider.dart';
 import 'package:autogit/features/repos/data/github_contents_api.dart';
 
 /// Map file extension to highlight language.
 dynamic _languageForFilename(String filename) {
-  final ext = filename.contains('.')
-      ? filename.split('.').last.toLowerCase()
-      : '';
+  final ext =
+      filename.contains('.') ? filename.split('.').last.toLowerCase() : '';
   switch (ext) {
     case 'dart':
       return dart;
@@ -223,6 +224,8 @@ class _GithubFileEditorScreenState
     if (_controller == null) return const SizedBox.shrink();
 
     final canPreview = _isPreviewable(widget.path);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final codeTheme = isDark ? atomOneDarkTheme : githubTheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.path.split('/').last),
@@ -247,12 +250,11 @@ class _GithubFileEditorScreenState
         ],
       ),
       body: CodeTheme(
-        data: CodeThemeData(styles: githubTheme),
-        child: SingleChildScrollView(
-          child: CodeField(
-            controller: _controller!,
-            gutterStyle: GutterStyle(showLineNumbers: true),
-          ),
+        data: CodeThemeData(styles: codeTheme),
+        child: CodeEditorField(
+          controller: _controller!,
+          gutterStyle: const GutterStyle(showLineNumbers: true),
+          showFindBar: true,
         ),
       ),
     );

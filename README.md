@@ -27,6 +27,23 @@ To use "Continue with GitHub" sign-in you need a **Client ID**. You can optional
 
 If `GITHUB_CLIENT_ID` is not set, the GitHub login button shows a configuration message. You can still use **Proceed without Sign In** to use the app without remote repositories.
 
+## Local Repositories
+
+- **Linux / Windows:** AutoGit uses the system **git** binary and stores repositories in a `Repositories` folder in your home directory (`~/Repositories` on Linux, `%USERPROFILE%\Repositories` on Windows). The folder is created automatically when you add or clone a repo.
+- **Android:** The app talks to a small HTTP server inside [Termux](https://termux.dev/). One-command setup:
+
+  1. **Install Termux** (from [F-Droid](https://f-droid.org/en/packages/com.termux/) or Play Store).
+  2. Open Termux and run (copy and paste this single command):
+     ```bash
+     curl -fsSL https://raw.githubusercontent.com/autogit-app/termux-setup/refs/heads/main/setup.sh | bash
+     ```
+     The script installs git and python, downloads the server script, starts it, and adds it to `~/.bashrc` so it runs whenever you open Termux. You’ll see colored output for each step.
+  3. Open the AutoGit app and use **Local Repositories**. No need to run anything else.
+
+  If the repo is under a different org/user, replace `autogit-app/autogit` in the URL. To run the script from a file instead of piping: `curl -L -O https://raw.githubusercontent.com/autogit-app/autogit/main/scripts/termux_setup.sh && bash termux_setup.sh`
+
+  The server uses `~/Repositories` and listens on `127.0.0.1:8765`. To use a remote server, set the URL in the app under **Settings → Local Git Server**.
+
 ## Releases and CI
 
 Pushing a **version tag** (e.g. `v1.0.0` or `v1.0.0+2`) on `main` triggers the [Release workflow](.github/workflows/release.yml). It builds:

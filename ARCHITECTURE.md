@@ -53,10 +53,10 @@ feature_name/
 
 ### Home (`features/home/`)
 
-- **Responsibility:** Home screen, notifications, starred, watched, issues, PRs, sites, create site, create code repo, projects, discussions, issue/PR detail.
+- **Responsibility:** Home screen, notifications, starred, watched, issues, PRs, sites, create site, projects, discussions, issue/PR detail.
 - **data:** None (uses features/github and features/auth).
 - **providers:** None (uses features/github providers).
-- **ui:** home_screen, notifications_screen, starred_screen, watched_screen, issues_screen, pull_requests_screen, sites_screen, create_site_screen, create_code_repo_screen, projects_screen, discussions_screen, issue_detail_screen, pr_detail_screen, widgets (home_fab, home_card).
+- **ui:** home_screen, notifications_screen, starred_screen, watched_screen, issues_screen, pull_requests_screen, sites_screen, create_site_screen, projects_screen, discussions_screen, issue_detail_screen, pr_detail_screen, widgets (home_fab, home_card).
 
 ### Repos (`features/repos/`)
 

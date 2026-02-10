@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-/// Repo name sanitization logic used by create_site and create_code_repo screens.
+/// Repo name sanitization logic used by create_site screen.
 String sanitizeRepoName(String input) {
   return input.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9\-_]'), '-');
 }

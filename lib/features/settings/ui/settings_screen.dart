@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -82,6 +84,13 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => context.push('/settings/appearance'),
               ),
+              ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: const Text('Git identity'),
+                subtitle: const Text('Name and email for commits'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/settings/git-identity'),
+              ),
             ]),
           ),
           SliverToBoxAdapter(
@@ -111,6 +120,16 @@ class SettingsScreen extends ConsumerWidget {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {},
               ),
+              if (Platform.isAndroid)
+                ListTile(
+                  leading: const Icon(FontAwesomeIcons.server),
+                  title: const Text('Local Git Server'),
+                  subtitle: const Text(
+                    'Termux or remote server URL for local repositories',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/settings/local-git-server'),
+                ),
             ]),
           ),
           SliverToBoxAdapter(
@@ -165,8 +184,7 @@ class SettingsScreen extends ConsumerWidget {
               ListTile(
                 leading: const Icon(FontAwesomeIcons.circleQuestion),
                 title: const Text('Help'),
-                subtitle:
-                    const Text('Documentation at autogit-app.github.io/docs'),
+                subtitle: const Text('Open documentation site'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => launchUrlString(
                   'https://autogit-app.github.io/docs',

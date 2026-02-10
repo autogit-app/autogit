@@ -12,3 +12,4 @@ void main() async {
   await loadThemeFromPrefs();
   runApp(const ProviderScope(child: AGApp()));
 }
+

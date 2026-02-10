@@ -45,15 +45,6 @@ class HomeFab extends ConsumerWidget {
                 context.push('/home/create-site');
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.code),
-              title: const Text('Create code repo'),
-              subtitle: const Text('New repo from autogit-app/environments'),
-              onTap: () {
-                Navigator.pop(context);
-                context.push('/home/create-code-repo');
-              },
-            ),
           ],
         ),
       ),

@@ -20,7 +20,7 @@ class LargeAppBar extends StatelessWidget {
       title: Text(title),
       pinned: pinned,
       expandedHeight: 120,
-      leading: onBack == null ? null : BackButton(onPressed: () => onBack),
+      leading: onBack == null ? null : BackButton(onPressed: onBack),
       actions: actions,
     );
   }

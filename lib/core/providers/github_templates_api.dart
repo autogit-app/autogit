@@ -113,6 +113,36 @@ Future<List<SiteTemplate>> fetchTemplates({String? token}) async {
     }
   } catch (_) {}
 
+  // Built-in templates when repo is empty or unreachable (always appended so users always have options).
+  final builtIn = [
+    SiteTemplate(
+      id: 'builtin_minimal',
+      name: 'Minimal page',
+      description: 'Single index.html with basic structure',
+      templateOwner: _templatesRepoOwner,
+      templateRepo: _templatesRepo,
+      folderPath: 'builtin_minimal',
+    ),
+    SiteTemplate(
+      id: 'builtin_blog',
+      name: 'Simple blog',
+      description: 'Blog-style page with CSS',
+      templateOwner: _templatesRepoOwner,
+      templateRepo: _templatesRepo,
+      folderPath: 'builtin_blog',
+    ),
+    SiteTemplate(
+      id: 'builtin_docs',
+      name: 'Documentation',
+      description: 'Docs-style page with sections',
+      templateOwner: _templatesRepoOwner,
+      templateRepo: _templatesRepo,
+      folderPath: 'builtin_docs',
+    ),
+  ];
+  for (final t in builtIn) {
+    if (results.every((r) => r.id != t.id)) results.add(t);
+  }
   if (results.isEmpty) {
     results.add(
       SiteTemplate(
@@ -126,6 +156,84 @@ Future<List<SiteTemplate>> fetchTemplates({String? token}) async {
     );
   }
   return results;
+}
+
+/// Content for built-in site templates (when folderPath is builtin_*).
+Map<String, String> getBuiltInSiteTemplateContents(String folderPath) {
+  switch (folderPath) {
+    case 'builtin_minimal':
+      return {
+        'index.html': '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Site</title>
+</head>
+<body>
+  <h1>Welcome</h1>
+  <p>This is my GitHub Pages site.</p>
+</body>
+</html>''',
+      };
+    case 'builtin_blog':
+      return {
+        'index.html': '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Blog</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>My Blog</h1></header>
+  <main>
+    <article>
+      <h2>First post</h2>
+      <p>Hello, world! This is my first post.</p>
+    </article>
+  </main>
+</body>
+</html>''',
+        'style.css':
+            '''body { font-family: system-ui; max-width: 720px; margin: 0 auto; padding: 1rem; }
+header { border-bottom: 1px solid #eee; }
+article { margin: 2rem 0; }''',
+      };
+    case 'builtin_docs':
+      return {
+        'index.html': '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <h2>Docs</h2>
+    <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#usage">Usage</a></li>
+    </ul>
+  </nav>
+  <main>
+    <section id="intro"><h1>Introduction</h1><p>Welcome to the documentation.</p></section>
+    <section id="usage"><h2>Usage</h2><p>Get started by reading the sections above.</p></section>
+  </main>
+</body>
+</html>''',
+        'style.css':
+            '''body { font-family: system-ui; display: flex; max-width: 960px; margin: 0 auto; }
+nav { width: 200px; padding: 1rem; border-right: 1px solid #eee; }
+main { padding: 1rem 2rem; }
+section { margin: 2rem 0; }''',
+      };
+    default:
+      return {};
+  }
 }
 
 /// Create a new repository from a template (or from a folder in the templates repo).
@@ -146,8 +254,26 @@ Future<Map<String, dynamic>> createRepoFromTemplate({
   }
 
   if (folderPath != null && folderPath.isNotEmpty) {
-    // Create empty repo and copy folder contents.
     final repo = await createRepo(token, newRepoName);
+    final builtIn = getBuiltInSiteTemplateContents(folderPath);
+    if (builtIn.isNotEmpty) {
+      for (final entry in builtIn.entries) {
+        await GitHubContentsApi.instance.createFile(
+          owner: owner,
+          repo: newRepoName,
+          path: entry.key,
+          content: entry.value,
+          message: 'Add ${entry.key} from template',
+          token: token,
+        );
+      }
+      return {
+        'name': repo.name,
+        'full_name': '${repo.owner!.login}/${repo.name}',
+        'clone_url': repo.htmlUrl,
+        'private': repo.isPrivate,
+      };
+    }
     await GitHubContentsApi.instance.copyFolderToRepo(
       sourceOwner: templateOwner,
       sourceRepo: templateRepo,

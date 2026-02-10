@@ -10,12 +10,13 @@ import 'package:autogit/features/home/ui/issues_screen.dart';
 import 'package:autogit/features/home/ui/pull_requests_screen.dart';
 import 'package:autogit/features/home/ui/sites_screen.dart';
 import 'package:autogit/features/home/ui/create_site_screen.dart';
-import 'package:autogit/features/home/ui/create_code_repo_screen.dart';
 import 'package:autogit/features/home/ui/projects_screen.dart';
 import 'package:autogit/features/home/ui/discussions_screen.dart';
 import 'package:autogit/features/onboarding/ui/onboarding_screen.dart';
+import 'package:autogit/features/repos/ui/local/local_file_editor_screen.dart';
 import 'package:autogit/features/repos/ui/local/local_repos_screen.dart';
 import 'package:autogit/features/repos/ui/local/local_repository_screen.dart';
+import 'package:autogit/features/repos/ui/widgets/local_fab.dart';
 import 'package:autogit/features/repos/ui/github/github_repos_screen.dart';
 import 'package:autogit/features/repos/ui/github/github_file_editor_screen.dart';
 import 'package:autogit/features/repos/ui/github/github_repository_screen.dart';
@@ -31,6 +32,8 @@ import 'package:autogit/features/profile/ui/profile_screen.dart';
 import 'package:autogit/features/settings/ui/sections/about_screen.dart';
 import 'package:autogit/features/settings/ui/sections/ai_screen.dart';
 import 'package:autogit/features/settings/ui/sections/appearance_screen.dart';
+import 'package:autogit/features/settings/ui/sections/git_identity_screen.dart';
+import 'package:autogit/features/settings/ui/sections/local_git_server_screen.dart';
 import 'package:autogit/features/settings/ui/sections/statistics_screen.dart';
 import 'package:autogit/features/settings/ui/settings_screen.dart';
 
@@ -74,7 +77,7 @@ final GoRouter appRouter = GoRouter(
           navigationShell: navigationShell,
           floatingActionButton: switch (currentPath) {
             '/home' => const HomeFab(),
-            '/home/local' => const HomeFab(),
+            '/home/local' => const LocalReposFab(),
             '/home/github' => const HomeFab(),
             '/home/gitlab' => const HomeFab(),
             _ => null,
@@ -118,10 +121,6 @@ final GoRouter appRouter = GoRouter(
               builder: (context, state) => const CreateSiteScreen(),
             ),
             GoRoute(
-              path: '/home/create-code-repo',
-              builder: (context, state) => const CreateCodeRepoScreen(),
-            ),
-            GoRoute(
               path: '/home/projects',
               builder: (context, state) => const ProjectsScreen(),
             ),
@@ -157,6 +156,19 @@ final GoRouter appRouter = GoRouter(
               path: '/home/local/:repo',
               builder: (context, state) =>
                   LocalRepositoryScreen(param: state.pathParameters['repo']!),
+              routes: [
+                GoRoute(
+                  path: 'file',
+                  builder: (context, state) {
+                    final path = state.uri.queryParameters['path'] ?? '';
+                    return LocalFileEditorScreen(
+                      repoName:
+                          Uri.decodeComponent(state.pathParameters['repo']!),
+                      path: path,
+                    );
+                  },
+                ),
+              ],
             ),
             // GitHub repo: /home/github/:owner/:repo (search + my repos)
             GoRoute(
@@ -241,6 +253,14 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/settings/about',
               builder: (context, state) => const AboutScreen(),
+            ),
+            GoRoute(
+              path: '/settings/local-git-server',
+              builder: (context, state) => const LocalGitServerScreen(),
+            ),
+            GoRoute(
+              path: '/settings/git-identity',
+              builder: (context, state) => const GitIdentityScreen(),
             ),
           ],
         ),

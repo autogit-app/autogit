@@ -153,8 +153,8 @@ Future<void> mergePullRequest({
     throw Exception('Failed to merge: ${response.statusCode} ${response.body}');
 }
 
-/// Get default branch (e.g. main) and latest commit sha for it.
-Future<Map<String, String>> getDefaultBranchAndSha({
+/// Get repo info (default_branch, clone_url, ssh_url).
+Future<Map<String, dynamic>> getRepo({
   required String owner,
   required String repo,
   String? token,
@@ -164,17 +164,98 @@ Future<Map<String, String>> getDefaultBranchAndSha({
   if (response.statusCode != 200)
     throw Exception('Failed to get repo: ${response.statusCode}');
   final data = jsonDecode(response.body) as Map<String, dynamic>;
+  return data;
+}
+
+/// Get default branch (e.g. main) and latest commit sha for it.
+Future<Map<String, String>> getDefaultBranchAndSha({
+  required String owner,
+  required String repo,
+  String? token,
+}) async {
+  final data = await getRepo(owner: owner, repo: repo, token: token);
   final defaultBranch = data['default_branch'] as String? ?? 'main';
   final branchesUri = Uri.parse(
     '$_base/repos/$owner/$repo/branches/$defaultBranch',
   );
-  final branchRes = await http.get(branchesUri, headers: _headers(token));
+  final branchRes = await http.get(
+    branchesUri,
+    headers: _headers(token),
+  );
   if (branchRes.statusCode != 200)
     throw Exception('Failed to get branch: ${branchRes.statusCode}');
   final branchData = jsonDecode(branchRes.body) as Map<String, dynamic>;
   final commit = branchData['commit'] as Map<String, dynamic>?;
   final sha = commit?['sha'] as String? ?? '';
   return {'branch': defaultBranch, 'sha': sha};
+}
+
+/// Delete a branch (refs/heads/branchName).
+Future<void> deleteBranch({
+  required String owner,
+  required String repo,
+  required String branchName,
+  String? token,
+}) async {
+  if (token == null || token.isEmpty)
+    throw Exception('Token required to delete branch');
+  final ref = 'heads/$branchName';
+  final uri = Uri.parse('$_base/repos/$owner/$repo/git/refs/$ref');
+  final response = await http.delete(uri, headers: _headers(token));
+  if (response.statusCode != 204)
+    throw Exception(
+      'Failed to delete branch: ${response.statusCode} ${response.body}',
+    );
+}
+
+/// Merge a branch into another (base = target, head = source).
+Future<Map<String, dynamic>> mergeBranch({
+  required String owner,
+  required String repo,
+  required String base,
+  required String head,
+  String? commitMessage,
+  String? token,
+}) async {
+  if (token == null || token.isEmpty)
+    throw Exception('Token required to merge');
+  final uri = Uri.parse('$_base/repos/$owner/$repo/merges');
+  final body = <String, dynamic>{
+    'base': base,
+    'head': head,
+  };
+  if (commitMessage != null && commitMessage.isNotEmpty) {
+    body['commit_message'] = commitMessage;
+  }
+  final response = await http.post(
+    uri,
+    headers: _headersJson(token),
+    body: jsonEncode(body),
+  );
+  if (response.statusCode != 201)
+    throw Exception(
+      'Failed to merge: ${response.statusCode} ${response.body}',
+    );
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+/// List commits (optionally for a branch via sha).
+Future<List<Map<String, dynamic>>> listCommits({
+  required String owner,
+  required String repo,
+  String? sha,
+  int perPage = 25,
+  String? token,
+}) async {
+  final query =
+      sha != null ? '?sha=$sha&per_page=$perPage' : '?per_page=$perPage';
+  final uri = Uri.parse('$_base/repos/$owner/$repo/commits$query');
+  final response = await http.get(uri, headers: _headers(token));
+  if (response.statusCode != 200)
+    throw Exception('Failed to list commits: ${response.statusCode}');
+  final list = jsonDecode(response.body);
+  if (list is! List) return [];
+  return list.map((e) => e as Map<String, dynamic>).toList();
 }
 
 /// PATCH /repos/:owner/:repo - update repo settings.
@@ -185,6 +266,7 @@ Future<Map<String, dynamic>> updateRepo({
   String? description,
   bool? private,
   String? homepage,
+  String? defaultBranch,
   String? token,
 }) async {
   if (token == null || token.isEmpty) {
@@ -196,6 +278,7 @@ Future<Map<String, dynamic>> updateRepo({
   if (description != null) body['description'] = description;
   if (private != null) body['private'] = private;
   if (homepage != null) body['homepage'] = homepage;
+  if (defaultBranch != null) body['default_branch'] = defaultBranch;
   final response = await http.patch(
     uri,
     headers: _headersJson(token),

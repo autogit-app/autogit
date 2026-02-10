@@ -13,6 +13,16 @@ Map<String, String> _headers(String? token) {
   return h;
 }
 
+/// GET /user (authenticated current user; returns email when scope user:email).
+Future<Map<String, dynamic>> getCurrentUser(String token) async {
+  final uri = Uri.parse('$_base/user');
+  final response = await http.get(uri, headers: _headers(token));
+  if (response.statusCode != 200) {
+    throw Exception('Failed to get current user: ${response.statusCode}');
+  }
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
 /// GET /users/:username
 Future<Map<String, dynamic>> getUser(String login, {String? token}) async {
   final uri = Uri.parse('$_base/users/${Uri.encodeComponent(login)}');
